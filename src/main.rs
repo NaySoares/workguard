@@ -104,11 +104,12 @@ fn main() {
 
                             let text = format!("{:?}", status);
 
-                            let menu = app.menu().expect("menu não encontrado");
-                            let _item = menu.get("status").unwrap();
                             if let Some(menu) = app.menu() {
-                                if let Some(tauri::menu::MenuItemKind::MenuItem(item)) = menu.get("status") {
-                                    item.set_text(text).ok();
+                                if let Some(kind) = menu.get("status") {
+                                    match kind {
+                                        tauri::menu::MenuItemKind::MenuItem(item) => { item.set_text(text).ok(); },
+                                        _ => {}
+                                    }
                                 }
                             }
                         }
@@ -116,6 +117,34 @@ fn main() {
                     }
                 })
                 .build(app)?;
+
+            use tauri::async_runtime::spawn;
+            use std::time::Duration;
+
+            let app_handle = app.handle().clone();
+
+            spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+
+                    // Acesso ao estado global timer
+                    let state: tauri::State<Mutex<WorkTimer>> = app_handle.state();
+                    let timer = state.lock().unwrap();
+
+                    let status = timer.get_state();
+                    let text = format!("{:?}", status);
+
+                    // Atualiza o item de menu "status"
+                    if let Some(menu) = app_handle.menu() {
+                        if let Some(kind) = menu.get("status") {
+                            match kind {
+                                tauri::menu::MenuItemKind::MenuItem(item) => { let _ = item.set_text(text); },
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            });
 
             Ok(())
         })
