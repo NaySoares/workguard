@@ -10,6 +10,12 @@ use core::state::WorkState;
 use chrono::{NaiveTime, Local};
 use std::sync::Mutex;
 
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{TrayIconBuilder},
+    Manager,
+};
+
 #[tauri::command]
 fn get_status(timer: tauri::State<Mutex<WorkTimer>>) -> String{
     let timer = timer.lock().unwrap();
@@ -58,9 +64,61 @@ fn main() {
     );
 
 
-
     tauri::Builder::default()
         .manage(Mutex::new(timer))
+        .setup(move |app| {
+
+            // MENU ITEMS
+            let status_item = MenuItem::with_id(
+                app,
+                "status",
+                "Iniciando...",
+                false,            // desabilitado (é só display)
+                None::<&str>,     // sem atalho
+            )?;
+
+            let quit_item = MenuItem::with_id(
+                app,
+                "quit",
+                "Sair",
+                true,
+                None::<&str>,
+            )?;
+
+            // MENU
+            let menu = Menu::new(app)?;
+            menu.append(&status_item)?;
+            menu.append(&quit_item)?;
+
+            // TRAY
+            TrayIconBuilder::new()
+                .menu(&menu)
+                .on_menu_event(move |app, event| {
+                    match event.id.as_ref() {
+                        "quit" => std::process::exit(0),
+
+                        "status" => {
+                            let state: tauri::State<Mutex<WorkTimer>> = app.state();
+                            let timer = state.lock().unwrap();
+                            let status = timer.get_state();
+
+                            let text = format!("{:?}", status);
+
+                            let menu = app.menu().expect("menu não encontrado");
+                            let _item = menu.get("status").unwrap();
+                            if let Some(menu) = app.menu() {
+                                if let Some(tauri::menu::MenuItemKind::MenuItem(item)) = menu.get("status") {
+                                    item.set_text(text).ok();
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                })
+                .build(app)?;
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![get_status])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
