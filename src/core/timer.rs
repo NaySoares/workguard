@@ -56,4 +56,8 @@ impl WorkTimer {
 
         WorkState::Working
     }
+
+    pub fn reset_day(&mut self) {
+        self.start_time = Local::now().time();
+    }
 }
