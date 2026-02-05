@@ -12,9 +12,32 @@ use std::sync::Mutex;
 
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::{TrayIconBuilder},
-    Manager,
+    tray::TrayIconBuilder,
+    image::Image, Manager,
 };
+
+/// Formata o status atual de trabalho em uma string legível
+fn format_status(timer: &WorkTimer) -> String {
+    let now = Local::now().time();
+
+    let (worked_minutes, remaining_minutes) =
+        WorkCalculator::calculate_worked_and_remaining(
+            timer.start_time,
+            now,
+            &timer.schedule,
+            timer.daily_target_minutes
+        );
+
+    let worked_h = worked_minutes / 60;
+    let worked_m = worked_minutes % 60;
+    let remaining_h = remaining_minutes / 60;
+    let remaining_m = remaining_minutes % 60;
+
+    format!(
+        "{}h {}m trabalhadas | {}h {}m restantes",
+        worked_h, worked_m, remaining_h, remaining_m
+    )
+}
 
 #[tauri::command]
 fn get_status(timer: tauri::State<Mutex<WorkTimer>>) -> String{
@@ -68,11 +91,18 @@ fn main() {
         .manage(Mutex::new(timer))
         .setup(move |app| {
 
+            // Calcula status inicial
+            let initial_text = {
+                let state: tauri::State<Mutex<WorkTimer>> = app.state();
+                let timer = state.lock().unwrap();
+                format_status(&timer)
+            };
+
             // MENU ITEMS
             let status_item = MenuItem::with_id(
                 app,
                 "status",
-                "Iniciando...",
+                &initial_text,
                 false,            // desabilitado (é só display)
                 None::<&str>,     // sem atalho
             )?;
@@ -90,29 +120,23 @@ fn main() {
             menu.append(&status_item)?;
             menu.append(&quit_item)?;
 
-            // TRAY
+            // TRAY:
+            let (icon_rgba, icon_width, icon_height) = {
+                let icon_bytes = include_bytes!("../icons/timer.png");
+                let img = image::load_from_memory(icon_bytes)
+                    .expect("Failed to load icon")
+                    .into_rgba8();
+                let (w, h) = img.dimensions();
+                (img.into_raw(), w, h)
+            };
+
+            let icon = Image::new_owned(icon_rgba, icon_width, icon_height);
             TrayIconBuilder::new()
                 .menu(&menu)
-                .on_menu_event(move |app, event| {
+                .icon(icon)
+                .on_menu_event(move |_app, event| {
                     match event.id.as_ref() {
                         "quit" => std::process::exit(0),
-
-                        "status" => {
-                            let state: tauri::State<Mutex<WorkTimer>> = app.state();
-                            let timer = state.lock().unwrap();
-                            let status = timer.get_state();
-
-                            let text = format!("{:?}", status);
-
-                            if let Some(menu) = app.menu() {
-                                if let Some(kind) = menu.get("status") {
-                                    match kind {
-                                        tauri::menu::MenuItemKind::MenuItem(item) => { item.set_text(text).ok(); },
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        }
                         _ => {}
                     }
                 })
@@ -123,26 +147,21 @@ fn main() {
 
             let app_handle = app.handle().clone();
 
+            // Spawn loop para atualização periódica
             spawn(async move {
                 loop {
+                    // Aguarda antes da próxima atualização
                     tokio::time::sleep(Duration::from_secs(30)).await;
 
-                    // Acesso ao estado global timer
-                    let state: tauri::State<Mutex<WorkTimer>> = app_handle.state();
-                    let timer = state.lock().unwrap();
-
-                    let status = timer.get_state();
-                    let text = format!("{:?}", status);
+                    // Acesso ao estado global timer para calcular o status atualizado
+                    let text = {
+                        let state: tauri::State<Mutex<WorkTimer>> = app_handle.state();
+                        let timer = state.lock().unwrap();
+                        format_status(&timer)
+                    };
 
                     // Atualiza o item de menu "status"
-                    if let Some(menu) = app_handle.menu() {
-                        if let Some(kind) = menu.get("status") {
-                            match kind {
-                                tauri::menu::MenuItemKind::MenuItem(item) => { let _ = item.set_text(text); },
-                                _ => {}
-                            }
-                        }
-                    }
+                    let _ = status_item.set_text(&text);
                 }
             });
 
