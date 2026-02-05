@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Manager, menu::MenuItem};
 use tauri::async_runtime::Mutex;
 use crate::core::timer::WorkTimer;
-use crate::utils::format_status;
+use crate::utils::{format_work_state, format_status};
 
 /// Handler para eventos do menu do tray
 pub fn handle_menu_event(
@@ -21,9 +21,10 @@ pub fn handle_menu_event(
                 let mut timer = state.lock().await;
                 timer.reset_day();
                 // Calcula o texto enquanto ainda temos o lock
-                let text = format_status(&timer);
+                let state_text = format_work_state(&timer);
+
                 drop(timer); // Libera o lock explicitamente
-                let _ = status_item.set_text(&text);
+                let _ = status_item.set_text(&state_text);
             }
             _ => {}
         }
@@ -37,17 +38,20 @@ pub fn start_status_updater(app_handle: AppHandle, status_item: MenuItem<tauri::
     tauri::async_runtime::spawn(async move {
         loop {
             // Aguarda antes da próxima atualização
-            tokio::time::sleep(Duration::from_secs(30)).await;
+            tokio::time::sleep(Duration::from_secs(60)).await;
 
             // Acesso ao estado global timer para calcular o status atualizado
-            let text = {
-                let state: tauri::State<Mutex<WorkTimer>> = app_handle.state();
-                let timer = state.lock().await;
-                format_status(&timer)
-            };
+            let state: tauri::State<Mutex<WorkTimer>> = app_handle.state();
+            let timer = state.lock().await;
+
+            let status_text = format!(
+              "{} | {}",
+              format_status(&timer),          // resumo (trab/min rest/min)
+              format_work_state(&timer)      // estado (soft/hard/finalizado)
+            );
 
             // Atualiza o item de menu "status"
-            let _ = status_item.set_text(&text);
+            let _ = status_item.set_text(&status_text);
         }
     });
 }
