@@ -2,6 +2,8 @@ use tauri::{AppHandle, Manager, menu::MenuItem};
 use tauri::async_runtime::Mutex;
 use crate::core::timer::WorkTimer;
 use crate::utils::{format_work_state, format_status};
+use crate::core::state::WorkState;
+use crate::notifications::{notify_hard_pause, notify_soft_pause, notify_finished, notify_back_to_work};
 
 /// Handler para eventos do menu do tray
 pub fn handle_menu_event(
@@ -34,24 +36,62 @@ pub fn handle_menu_event(
 /// Inicia o loop de atualização periódica do status
 pub fn start_status_updater(app_handle: AppHandle, status_item: MenuItem<tauri::Wry>) {
     use std::time::Duration;
+    use std::sync::Arc;
+    use tokio::sync::Mutex as TokioMutex;
+
+    // Armazena o último estado para detectar mudanças
+    let last_state: Arc<TokioMutex<Option<WorkState>>> = Arc::new(TokioMutex::new(None));
 
     tauri::async_runtime::spawn(async move {
         loop {
-            // Aguarda antes da próxima atualização
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_secs(30)).await;
 
             // Acesso ao estado global timer para calcular o status atualizado
             let state: tauri::State<Mutex<WorkTimer>> = app_handle.state();
             let timer = state.lock().await;
 
+            let current_state = timer.get_state();
             let status_text = format!(
               "{} | {}",
               format_status(&timer),          // resumo (trab/min rest/min)
-              format_work_state(&timer)      // estado (soft/hard/finalizado)
+              format_work_state(&timer)       // estado (soft/hard/finalizado)
             );
+
+            drop(timer);
+
+            // Verifica se o estado mudou e dispara notificação
+            let mut last = last_state.lock().await;
+            let state_changed = last.as_ref() != Some(&current_state);
+            if state_changed {
+                notify_by_state(&app_handle, &current_state);
+                *last = Some(current_state);
+            }
 
             // Atualiza o item de menu "status"
             let _ = status_item.set_text(&status_text);
         }
     });
+}
+
+fn notify_by_state(app: &AppHandle, state: &WorkState) {
+    match state {
+        WorkState::Paused { reason, until } => {
+            let time_str = until
+                .map(|t| t.format("%H:%M").to_string())
+                .unwrap_or_else(|| "?".to_string());
+            notify_hard_pause(app, reason, &time_str);
+        }
+        WorkState::SoftBreak { label, until } => {
+            let time_str = until
+                .map(|t| t.format("%H:%M").to_string())
+                .unwrap_or_else(|| "?".to_string());
+            notify_soft_pause(app, label, &time_str);
+        }
+        WorkState::Finished => {
+            notify_finished(app);
+        }
+        WorkState::Working => {
+            notify_back_to_work(app);
+        }
+    }
 }

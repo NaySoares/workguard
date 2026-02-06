@@ -5,6 +5,7 @@ mod core;
 mod commands;
 mod utils;
 mod config;
+mod notifications;
 mod tray;
 
 use tauri::async_runtime::Mutex;
@@ -15,6 +16,7 @@ fn main() {
     let timer = default_timer();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .manage(Mutex::new(timer))
         .setup(|app| {
             tray::setup(app)?;

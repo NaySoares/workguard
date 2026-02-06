@@ -20,6 +20,18 @@ fn schedule_default() -> Schedule {
                 end: NaiveTime::from_hms_opt(13, 0, 0).unwrap(),
             block_type: BlockType::HardPause,
             },
+            TimeBlock {
+                label: "Pausa para café".to_string(),
+                start: NaiveTime::from_hms_opt(16, 00, 0).unwrap(),
+                end: NaiveTime::from_hms_opt(17, 00, 0).unwrap(),
+                block_type: BlockType::SoftPause,
+            },
+            TimeBlock {
+                label: "Pausa Hard".to_string(),
+                start: NaiveTime::from_hms_opt(20, 45, 0).unwrap(),
+                end: NaiveTime::from_hms_opt(20, 50, 0).unwrap(),
+                block_type: BlockType::HardPause,
+            },
         ]
     }
 }
