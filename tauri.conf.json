@@ -32,7 +32,8 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "icons/timer.png"
+      "icons/timer.png",
+      "icons/tray_white.png"
     ]
   }
 }

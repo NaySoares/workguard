@@ -2,7 +2,7 @@ use tauri::image::Image;
 
 /// Carrega o ícone do tray a partir do arquivo embutido
 pub fn load_icon() -> Image<'static> {
-    let icon_bytes = include_bytes!("../../icons/timer.png");
+    let icon_bytes = include_bytes!("../../icons/tray_white.png");
     let img = image::load_from_memory(icon_bytes)
         .expect("Failed to load icon")
         .into_rgba8();
