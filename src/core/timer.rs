@@ -2,7 +2,7 @@ use chrono::{Local, NaiveTime};
 
 use super::schedule::{Schedule, BlockType};
 use super::calculator::WorkCalculator;
-use super::state::WorkState;
+use super::state::{WorkState, WorkTimerState};
 
 pub struct WorkTimer {
     pub start_time: NaiveTime,
@@ -59,5 +59,19 @@ impl WorkTimer {
 
     pub fn reset_day(&mut self) {
         self.start_time = Local::now().time();
+    }
+
+    /// Converte o timer para um formato serializável (JSON)
+    pub fn to_state(&self) -> WorkTimerState {
+        WorkTimerState {
+            start_date: Local::now().date_naive(),
+            start_time: self.start_time,
+            daily_target_minutes: self.daily_target_minutes,
+        }
+    }
+
+    /// Cria um timer a partir de um estado serializado
+    pub fn from_state(state: WorkTimerState, schedule: Schedule) -> Self {
+        WorkTimer::new(state.start_time, schedule, state.daily_target_minutes)
     }
 }

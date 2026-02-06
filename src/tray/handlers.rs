@@ -4,6 +4,7 @@ use crate::core::timer::WorkTimer;
 use crate::utils::{format_work_state, format_status};
 use crate::core::state::WorkState;
 use crate::notifications::{notify_hard_pause, notify_soft_pause, notify_finished, notify_back_to_work};
+use crate::storage::{save_timer_state, state_file_path};
 
 /// Handler para eventos do menu do tray
 pub fn handle_menu_event(
@@ -17,15 +18,22 @@ pub fn handle_menu_event(
 
     tauri::async_runtime::spawn(async move {
         match event_id.as_str() {
-            "quit" => std::process::exit(0),
+            "quit" => {
+                // Salva o estado antes de sair
+                save_current_state(&app_handle).await;
+                std::process::exit(0);
+            }
             "reset" => {
                 let state: tauri::State<Mutex<WorkTimer>> = app_handle.state();
                 let mut timer = state.lock().await;
                 timer.reset_day();
-                // Calcula o texto enquanto ainda temos o lock
-                let state_text = format_work_state(&timer);
 
-                drop(timer); // Libera o lock explicitamente
+                let state_text = format_work_state(&timer);
+                if let Ok(path) = state_file_path(&app_handle) {
+                    let _ = save_timer_state(&path, &timer.to_state());
+                }
+
+                drop(timer);
                 let _ = status_item.set_text(&state_text);
             }
             _ => {}
@@ -57,6 +65,13 @@ pub fn start_status_updater(app_handle: AppHandle, status_item: MenuItem<tauri::
               format_work_state(&timer)       // estado (soft/hard/finalizado)
             );
 
+            // Salva o estado atual no arquivo JSON
+            if let Ok(path) = state_file_path(&app_handle) {
+                if let Err(e) = save_timer_state(&path, &timer.to_state()) {
+                    eprintln!("[WorkGuard] Erro ao salvar estado: {:?}", e);
+                }
+            }
+
             drop(timer);
 
             // Verifica se o estado mudou e dispara notificação
@@ -71,6 +86,20 @@ pub fn start_status_updater(app_handle: AppHandle, status_item: MenuItem<tauri::
             let _ = status_item.set_text(&status_text);
         }
     });
+}
+
+/// Salva o estado atual do timer
+async fn save_current_state(app: &AppHandle) {
+    let state: tauri::State<Mutex<WorkTimer>> = app.state();
+    let timer = state.lock().await;
+
+    if let Ok(path) = state_file_path(app) {
+        if let Err(e) = save_timer_state(&path, &timer.to_state()) {
+            eprintln!("[WorkGuard] Erro ao salvar estado ao sair: {:?}", e);
+        } else {
+            println!("[WorkGuard] Estado salvo com sucesso");
+        }
+    }
 }
 
 fn notify_by_state(app: &AppHandle, state: &WorkState) {

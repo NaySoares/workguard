@@ -7,18 +7,19 @@ mod utils;
 mod config;
 mod notifications;
 mod tray;
+mod storage;
 
 use tauri::async_runtime::Mutex;
+use tauri::Manager;
 use commands::{get_status, reset_day};
-use config::default_timer;
+use config::load_or_create_timer;
 
 fn main() {
-    let timer = default_timer();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .manage(Mutex::new(timer))
         .setup(|app| {
+            let timer = load_or_create_timer(app.handle());
+            app.manage(Mutex::new(timer));
             tray::setup(app)?;
             Ok(())
         })
